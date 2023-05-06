@@ -1,13 +1,13 @@
 {
     "batch_size": 8,
-    "num_evidence_per_batch": 128,
-    "num_epoch": 20,
-    "num_itr_validate": 5,
+    "num_evidence_per_batch": 64,
+    "num_epoch": 10,
+    "num_itr_validate": 10,
     "num_topk": 5,
     "seed": 46,
     "tokenizer": "roberta-base",
-    "similarity_adjustment": 0.08,
+    "similarity_adjustment": 0.05,
     "grad_norm": 1.0,
     "num_warmup_steps": 0,
-    "save_model_dir": "./cache/"
+    "save_model_dir": "evidence_retriever/cache/"
 }

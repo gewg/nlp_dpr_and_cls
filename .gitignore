@@ -1,3 +1,4 @@
 .DS_Store
 evidence_retriever/__pycache__/
 data/
+out/

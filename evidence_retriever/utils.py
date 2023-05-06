@@ -43,7 +43,7 @@ def move_data_to_cuda(batch):
 def get_fscore(precision, recall):
     return 2 * (precision * recall) / (precision + recall)
 
-class ClaimDataset(Dataset):
+class TrainDataset(Dataset):
     def __init__(self, num_evidence_per_batch, 
                  tokenizer,
                  filepath_claims, filepath_evidences):
@@ -62,7 +62,6 @@ class ClaimDataset(Dataset):
         self.claims_ids = list(self.data_claims.keys())
         self.num_claims = len(self.claims_ids)
         self.evidences_ids = list(self.data_evidences.keys())
-        self.num_evidences = len(self.evidences_ids)
     
     def __len__(self):
         '''
@@ -78,13 +77,13 @@ class ClaimDataset(Dataset):
         curr_claim_idx = self.claims_ids[idx]
         curr_claim = self.data_claims[curr_claim_idx]
         curr_claim_text = curr_claim["claim_text"]
-        curr_claim_evidences = curr_claim["evidences"]
+        curr_claim_evidences_ids = curr_claim["evidences"]
 
         # preprocess the data
         curr_claim_text = self.data_preprocess(curr_claim_text)
 
         # output the data
-        return (curr_claim_text, curr_claim_evidences)
+        return (curr_claim_text, curr_claim_evidences_ids)
 
     def data_preprocess(self, data):
         '''
@@ -111,7 +110,7 @@ class ClaimDataset(Dataset):
             curr_positive_evidence_start = len(claims_evidences_ids)
             curr_positive_evidence_end = curr_positive_evidence_start + len(curr_claim_evidences_ids) - 1
             claims_positive_evidences_positions.append([curr_positive_evidence_start, curr_positive_evidence_end])
-            
+
             claims_texts.append(curr_claim_text)
             claims_evidences_ids.extend(curr_claim_evidences_ids)
         
@@ -285,8 +284,8 @@ class ValidateDataset(Dataset):
 
         # generate one batch
         batch = dict()
-        batch["claim_ids"] = validate_claim_ids
-        batch["claim_evidences_ids"] = validate_claim_evidences_ids
+        batch["claims_ids"] = validate_claim_ids
+        batch["claims_evidences_ids"] = validate_claim_evidences_ids
         batch["claims_texts_input_ids"] = tok_validate_claim_texts.input_ids
         batch["claims_texts_attention_mask"] = tok_validate_claim_texts.attention_mask
 
