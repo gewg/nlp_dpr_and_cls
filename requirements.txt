@@ -1,0 +1,6 @@
+transformers>=4.8.1
+bunch
+torch
+torchvision
+torchaudio
+wandb
