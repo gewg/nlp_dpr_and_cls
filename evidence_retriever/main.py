@@ -16,7 +16,7 @@ import utils
 import time
 import datetime
 import os
-from transformers import AutoTokenizer, AutoModelForMaskedLM
+from transformers import AutoTokenizer, AutoModel
 from transformers import get_linear_schedule_with_warmup
 
 def driver_train():
@@ -36,7 +36,7 @@ def driver_train():
     tokenizer = AutoTokenizer.from_pretrained(params.tokenizer)
 
     # initialize the dataset
-    train_dataset = utils.ClaimDataset(params.num_evidence_per_batch, tokenizer, "data/train-claims.json", "data/evidence/json")
+    train_dataset = utils.ClaimDataset(params.num_evidence_per_batch, tokenizer, "data/train-claims.json", "data/evidence.json")
     evidence_dataset = utils.EvidenceDataset(tokenizer, "data/evidence.json")
     validate_dataset = utils.ValidateDataset(tokenizer, "data/dev-claims.json")
 
@@ -46,14 +46,14 @@ def driver_train():
     dataloader_validate = DataLoader(validate_dataset, batch_size=params.batch_size, shuffle=True, collate_fn=validate_dataset.collate_fn)
 
     # create the encoders, there are two encoders for 'question' and 'passage' according to dense passage retrieval
-    encoder_claim = AutoModelForMaskedLM.from_pretrained(params.tokenizer)
-    encoder_evidence = AutoModelForMaskedLM.from_pretrained(params.tokenizer)
+    encoder_claim = AutoModel.from_pretrained(params.tokenizer)
+    encoder_evidence = AutoModel.from_pretrained(params.tokenizer)
     encoder_claim.cuda()
     encoder_evidence.cuda()
 
     # create the optimizer
-    optimizer_claim = encoder_claim.Adam(encoder_claim.parameters())
-    optimizer_evidence = encoder_evidence.Adam(encoder_evidence.parameters())
+    optimizer_claim = optim.Adam(encoder_claim.parameters())
+    optimizer_evidence = optim.Adam(encoder_evidence.parameters())
 
     # create the learning rate scheduler
     total_steps = len(dataloader_train) * params.num_epoch
@@ -65,7 +65,7 @@ def driver_train():
     for epoch_i in range(0, params.num_epoch):
 
         print("")
-        print("======== Epoch {:} / {:} ========" % (epoch_i + 1, params.num_epoch))
+        print("======== Epoch %d / %d ========" % (epoch_i + 1, params.num_epoch))
 
         train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
           encoder_claim, encoder_evidence,
@@ -74,7 +74,7 @@ def driver_train():
           params.similarity_adjustment,
           params.grad_norm,
           params.num_itr_validate,
-          params.topk,
+          params.num_topk,
           params.save_model_dir,
           epoch_i)
         
@@ -116,6 +116,7 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
     for step, batch in enumerate(dataloader_train):
         # move data to cuda
         utils.move_data_to_cuda(batch)
+
         # encode the claim text(question) and evidence text(passage)
         claim_text_embeddings = encoder_claim(input_ids=batch["claims_texts_input_ids"], 
                                               attention_mask=batch["claims_texts_attention_mask"]).last_hidden_state
@@ -127,7 +128,7 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
 
         # calcualte the loss, according to the formulas in dense passage retrieval
         # calculate the similarities between two embeddings
-        sims = torch.mm(claim_text_embeddings.t(), evidence_text_embeddings)
+        sims = torch.mm(claim_text_embeddings, evidence_text_embeddings.t())
         # calculate the loss for each evidence
         losses = - nn.functional.log_softmax(sims / similarity_adjustment, dim=1)  # while the difference between similarities may be small, the similarity_adjustment is used to increase it
         # for each claim text, get the positive evidence's loss
@@ -140,15 +141,15 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
             each_claim_loss.append(torch.mean(curr_claim_losses))
 
         # backward the loss
-        each_claim_loss = torch.stack(each_claim_loss).mean
+        each_claim_loss = torch.stack(each_claim_loss).mean()
         each_claim_loss.backward()
 
         # count the loss
         total_train_loss += each_claim_loss.item()
 
         # gradient clipping
-        nn.utils.clip_grad_norm_(encoder_claim.parameters, grad_norm)
-        nn.utils.clip_grad_norm_(encoder_evidence.parameters, grad_norm)
+        nn.utils.clip_grad_norm_(encoder_claim.parameters(), grad_norm)
+        nn.utils.clip_grad_norm_(encoder_evidence.parameters(), grad_norm)
 
         # update the parameters
         optimizer_claim.step()
@@ -162,6 +163,9 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
 
         # validate and report the information per 'num_itr_validate' times iteration
         if step % num_itr_validate == 0 and not step == 0:
+
+            print("Validate - Start validating")
+            
             # validate the model
             f_score = validate_model(encoder_claim, encoder_evidence, 
                                      dataloader_validate, dataloader_evidence, 
@@ -196,7 +200,7 @@ def validate_model(encoder_claim, encoder_evidence, dataloader_validate, dataloa
     encoder_evidence.eval()
 
     f_scores = []
-
+    
     for batch in dataloader_validate:
         # move data to cuda
         utils.move_data_to_cuda(batch)
@@ -276,5 +280,6 @@ def predict_model(encoder_claim, encoder_evidence, dataloader_claims, dataloader
 
     return prediction_result
 
-if __name__ == "main":
+if __name__ == "__main__":
+    print(1)
     driver_train()

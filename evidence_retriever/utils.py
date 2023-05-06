@@ -38,7 +38,7 @@ def move_data_to_cuda(batch):
     for key in batch.keys():
         if key in ["claims_texts_input_ids", "claims_texts_attention_mask",
                    "evidences_input_ids", "evidences_attention_mask"]:
-            batch[key].cuda()
+                   batch[key] = batch[key].cuda()
 
 def get_fscore(precision, recall):
     return 2 * (precision * recall) / (precision + recall)
@@ -123,7 +123,7 @@ class ClaimDataset(Dataset):
             while random_evidence_id in claims_evidences_ids:
                 random_evidence_id = random.choice(self.evidences_ids)
             # filling the evidences in batch
-            claims_evidences_ids.extend(random_evidence_id)
+            claims_evidences_ids.append(random_evidence_id)
             num_claims_evidences += 1
 
         # according to evidences' ids, get evidences' texts
