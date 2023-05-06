@@ -9,5 +9,6 @@
     "similarity_adjustment": 0.05,
     "grad_norm": 1.0,
     "num_warmup_steps": 0,
-    "save_model_dir": "evidence_retriever/cache/"
+    "save_model_dir": "evidence_retriever/cache/",
+    "batch_size_evidences": 128
 }

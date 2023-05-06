@@ -37,16 +37,16 @@ def driver_train():
     tokenizer = AutoTokenizer.from_pretrained(params.tokenizer)
 
     # initialize the dataset
-    # train_dataset = utils.TrainDataset(params.num_evidence_per_batch, tokenizer, "data/train-claims.json", "data/evidence.json")
-    # evidence_dataset = utils.EvidenceDataset(tokenizer, "data/evidence.json")
-    # validate_dataset = utils.ValidateDataset(tokenizer, "data/dev-claims.json")
-    train_dataset = utils.TrainDataset(params.num_evidence_per_batch, tokenizer, "data/train-claims-debug.json", "data/evidence-debug.json")
-    evidence_dataset = utils.EvidenceDataset(tokenizer, "data/evidence-debug.json")
+    train_dataset = utils.TrainDataset(params.num_evidence_per_batch, tokenizer, "data/train-claims.json", "data/evidence.json")
+    evidence_dataset = utils.EvidenceDataset(tokenizer, "data/evidence.json")
     validate_dataset = utils.ValidateDataset(tokenizer, "data/dev-claims.json")
+    # train_dataset = utils.TrainDataset(params.num_evidence_per_batch, tokenizer, "data/train-claims-debug.json", "data/evidence-debug.json")
+    # evidence_dataset = utils.EvidenceDataset(tokenizer, "data/evidence-debug.json")
+    # validate_dataset = utils.ValidateDataset(tokenizer, "data/dev-claims.json")
 
     # initialize the dataloader
     dataloader_train = DataLoader(train_dataset, batch_size=params.batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
-    dataloader_evidence = DataLoader(evidence_dataset, batch_size=params.batch_size, shuffle=True, collate_fn=evidence_dataset.collate_fn)
+    dataloader_evidence = DataLoader(evidence_dataset, batch_size=params.batch_size_evidences, shuffle=True, collate_fn=evidence_dataset.collate_fn)
     dataloader_validate = DataLoader(validate_dataset, batch_size=params.batch_size, shuffle=True, collate_fn=validate_dataset.collate_fn)
 
     # create the encoders, there are two encoders for 'question' and 'passage' according to dense passage retrieval
@@ -66,10 +66,10 @@ def driver_train():
 
 
     '''Start training'''
-    for epoch_i in range(0, params.num_epoch+1):
+    for epoch_i in range(0, params.num_epoch):
 
         print("")
-        print("======== Epoch %d / %d ========" % (epoch_i + 1, params.num_epoch))
+        print("======== Epoch %d / %d ========" % (epoch_i+1, params.num_epoch))
 
         train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
           encoder_claim, encoder_evidence,
@@ -80,7 +80,7 @@ def driver_train():
           params.num_itr_validate,
           params.num_topk,
           params.save_model_dir,
-          epoch_i)
+          epoch_i+1)
         
         print("")
         
@@ -145,7 +145,7 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
             each_claim_loss.append(torch.mean(curr_claim_losses))
 
         # backward the loss
-        each_claim_loss = torch.stack(each_claim_loss).mean()
+        each_claim_loss = torch.mean(torch.stack(each_claim_loss))
         each_claim_loss.backward()
 
         # count the loss
@@ -166,6 +166,7 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
         del claim_text_embeddings, evidence_text_embeddings, sims, losses
 
         # validate and report the information per 'num_itr_validate' times iteration
+        # if step % num_itr_validate == 0 and not step == 0:
         if step % num_itr_validate == 0 and not step == 0:
 
             print("Validate - Start validating")
@@ -176,7 +177,9 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
                                      topk)
             print("Validate - Iteration %d" % step)
             print("Validate - The f_score is: %.3f" % f_score)
-            
+            print("Validate - Current best f_score is: %.3f" % best_f_score)
+            print("")
+
             # if the f-score is better, save the model
             if f_score > best_f_score:
                 best_f_score = f_score
@@ -192,7 +195,7 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
     training_time = utils.format_time(time.time() - t0)
     print("Finish Epoch - Epoch %d" % epoch_i)
     print("Finish Epoch - The best f_score is: %.3f" % best_f_score)
-    print("Finish Epoch - The best average loss is: %.3f" % avg_train_loss)
+    print("Finish Epoch - The average loss is: %.3f" % avg_train_loss)
     print("Finish Epoch - The training time is: {:}".format(training_time))
 
 def validate_model(encoder_claim, encoder_evidence, dataloader_validate, dataloader_evidence, topk):
@@ -208,6 +211,7 @@ def validate_model(encoder_claim, encoder_evidence, dataloader_validate, dataloa
 
     f_scores = []
     
+    print("Predict - Start predicting claims' evidences")
     for batch in tqdm(dataloader_validate):
         # move data to cuda
         utils.move_data_to_cuda(batch)
@@ -237,6 +241,11 @@ def validate_model(encoder_claim, encoder_evidence, dataloader_validate, dataloa
     encoder_claim.train()
     encoder_evidence.train()
 
+    # set a warning
+    if not f_scores:
+        print("Predict - !!! No correct prediction for this turn !!!")
+        f_scores = [0]
+
     # calculate the mean score and return
     return np.mean(f_scores)
 
@@ -255,11 +264,12 @@ def encode_evidences(encoder_evidence, dataloader_evidence):
         utils.move_data_to_cuda(batch)
         # encode the evidence text(passage)
         curr_evidence_text_embedding = encoder_evidence(input_ids=batch["evidences_input_ids"], 
-                                                    attention_mask=batch["evidences_attention_mask"]).last_hidden_state
+                                                        attention_mask=batch["evidences_attention_mask"]).last_hidden_state
         # normalize the embeddings
         curr_evidence_text_embedding = nn.functional.normalize(curr_evidence_text_embedding[:, 0, :].detach())
         evidence_text_embeddings.append(curr_evidence_text_embedding)
         evidence_ids.extend(batch["evidences_ids"])
+
     # combine all evidences' embeddings
     evidence_text_embeddings = torch.cat(evidence_text_embeddings, dim=0)
 
@@ -279,9 +289,7 @@ def predict_model(encoder_claim, dataloader_claims, evidence_ids, evidence_text_
     prediction_result = []
 
     # predict all claim text
-    print("")
-    print("Predict - Start predicting claims' evidences")
-    for batch in tqdm(dataloader_claims):
+    for batch in dataloader_claims:
         # move data to cuda
         utils.move_data_to_cuda(batch)
         # encode the claim text
@@ -306,5 +314,5 @@ def predict_model(encoder_claim, dataloader_claims, evidence_ids, evidence_text_
     return prediction_result
 
 if __name__ == "__main__":
-    print(1)
+    print("Starting...")
     driver_train()
