@@ -1,7 +1,7 @@
 {
     "batch_size": 8,
     "num_evidence_per_batch": 64,
-    "num_epoch": 10,
+    "num_epoch": 3,
     "num_itr_validate": 20,
     "num_topk": 5,
     "seed": 46,
@@ -10,5 +10,6 @@
     "grad_norm": 1.0,
     "num_warmup_steps": 0,
     "save_model_dir": "evidence_retriever/cache/",
-    "batch_size_evidences": 64
+    "batch_size_evidences": 56,
+    "learning_rate": 2e-5
 }

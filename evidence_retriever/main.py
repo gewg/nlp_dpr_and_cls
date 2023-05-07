@@ -36,6 +36,7 @@ def driver_train():
 
     # set the seed number 
     torch.manual_seed(params.seed)
+    torch.cuda.manual_seed_all(params.seed)
     np.random.seed(params.seed)
 
     # set the tokenizer
@@ -61,8 +62,8 @@ def driver_train():
     encoder_evidence.cuda()
 
     # create the optimizer
-    optimizer_claim = optim.Adam(encoder_claim.parameters())
-    optimizer_evidence = optim.Adam(encoder_evidence.parameters())
+    optimizer_claim = optim.Adam(encoder_claim.parameters(), lr=params.learning_rate)
+    optimizer_evidence = optim.Adam(encoder_evidence.parameters(), lr=params.learning_rate)
 
     # create the learning rate scheduler
     total_steps = len(dataloader_train) * params.num_epoch
@@ -107,9 +108,9 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
     # count the training time
     t0 = time.time()
 
-    # set the model as training
-    encoder_claim.train()
-    encoder_evidence.train()
+    # # set the model as training
+    # encoder_claim.train()
+    # encoder_evidence.train()
 
     # reset the gradient
     optimizer_claim.zero_grad()
@@ -132,17 +133,15 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
                                               attention_mask=batch["claims_texts_attention_mask"]).last_hidden_state
         evidence_text_embeddings = encoder_evidence(input_ids=batch["evidences_input_ids"], 
                                                     attention_mask=batch["evidences_attention_mask"]).last_hidden_state
-                                                    
         # normalize the embeddings
-        claim_text_embeddings = nn.functional.normalize(claim_text_embeddings[:, 0, :])
-        evidence_text_embeddings = nn.functional.normalize(evidence_text_embeddings[:, 0, :])
+        claim_text_embeddings = torch.nn.functional.normalize(claim_text_embeddings[:, 0, :])
+        evidence_text_embeddings = torch.nn.functional.normalize(evidence_text_embeddings[:, 0, :])
 
         # calcualte the loss, according to the formulas in dense passage retrieval
         # calculate the similarities between two embeddings
         sims = torch.mm(claim_text_embeddings, evidence_text_embeddings.t())
         # calculate the loss for each evidence
         losses = - nn.functional.log_softmax(sims / similarity_adjustment, dim=1)  # while the difference between similarities may be small, the similarity_adjustment is used to increase it
-
         # for each claim text, get the positive evidence's loss
         each_claim_loss = []
         for idx, positive_evidences_positions in enumerate(batch["claims_positive_evidences_positions"]):
@@ -151,10 +150,6 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
             curr_claim_losses = losses[idx, curr_claim_pos_evidence_start:curr_claim_pos_evidence_end+1]
             # while each claim has more than one positive evidence, so calculate the mean as the loss
             each_claim_loss.append(torch.mean(curr_claim_losses))
-
-        # reset the gradient
-        optimizer_claim.zero_grad()
-        optimizer_evidence.zero_grad()
 
         # backward the loss
         each_claim_loss = torch.mean(torch.stack(each_claim_loss))
@@ -175,6 +170,10 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
         scheduler_claim.step()
         scheduler_evidence.step()
 
+        # reset the gradient
+        optimizer_claim.zero_grad()
+        optimizer_evidence.zero_grad()
+
         del claim_text_embeddings, evidence_text_embeddings, sims, losses
 
         print("Train - Finish training")
@@ -193,7 +192,6 @@ def train_per_epoch(dataloader_train, dataloader_evidence, dataloader_validate,
 
             print("Validate - Iteration %d" % step)
             print("Validate - The f_score is: %.3f" % f_score)
-            print("Validate - Current best f_score is: %.3f" % best_f_score)
             print("==================================================")
             print("")
 
@@ -226,8 +224,8 @@ def validate_model(encoder_claim, encoder_evidence, dataloader_validate, dataloa
     # encode the evidence
     if not debug:
         evidence_ids, evidence_text_embeddings = encode_evidences(encoder_evidence, dataloader_evidence)
-        evidence_embedding_dict = {"evidence_ids": evidence_ids, "evidence_text_embeddings": evidence_text_embeddings}
-        np.save("data/evidence_embedding.npy", evidence_embedding_dict)  # save embeddings to file for debug
+        # evidence_embedding_dict = {"evidence_ids": evidence_ids, "evidence_text_embeddings": evidence_text_embeddings}
+        # np.save("data/evidence_embedding.npy", evidence_embedding_dict)  # save embeddings to file for debug
     # if debug, directly get evidences' embeddings from file
     else:
         print("Debug - Loading evidence_embedding")
@@ -289,7 +287,6 @@ def encode_evidences(encoder_evidence, dataloader_evidence):
         # encode the evidence text(passage)
         curr_evidence_text_embedding = encoder_evidence(input_ids=batch["evidences_input_ids"], 
                                                         attention_mask=batch["evidences_attention_mask"]).last_hidden_state
-        print(curr_evidence_text_embedding)
         # normalize the embeddings
         curr_evidence_text_embedding = nn.functional.normalize(curr_evidence_text_embedding[:, 0, :].detach())
         evidence_text_embeddings.append(curr_evidence_text_embedding)
@@ -325,6 +322,7 @@ def predict_model(encoder_claim, dataloader_claims, evidence_ids, evidence_text_
         claim_text_embeddings = nn.functional.normalize(claim_text_embeddings[:, 0, :])
         # calculate the similarities between claim and evidence
         sims = torch.mm(claim_text_embeddings, evidence_text_embeddings.t())
+
         # pick the topk similarities' indices
         topk_ids = torch.topk(sims, k=topk, dim=1).indices.tolist()
 
@@ -333,7 +331,6 @@ def predict_model(encoder_claim, dataloader_claims, evidence_ids, evidence_text_
             for idx_evidence in topk_ids[idx]:
                 prediction_result[claim_id].append(evidence_ids[idx_evidence])
                 
-    print(sims)
     del claim_text_embeddings, sims
 
     return prediction_result
