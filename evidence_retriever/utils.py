@@ -106,6 +106,7 @@ class TrainDataset(Dataset):
 
         # load data from tuples
         for curr_claim_text, curr_claim_evidences_ids in claims_tuples:
+
             # mark the positive evidences' start and end position in evidences' list
             curr_positive_evidence_start = len(claims_evidences_ids)
             curr_positive_evidence_end = curr_positive_evidence_start + len(curr_claim_evidences_ids) - 1
