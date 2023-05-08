@@ -37,11 +37,17 @@ def move_data_to_cuda(batch):
     """
     for key in batch.keys():
         if key in ["claims_texts_input_ids", "claims_texts_attention_mask",
-                   "evidences_input_ids", "evidences_attention_mask"]:
+                   "evidences_input_ids", "evidences_attention_mask"
+                   ]:
                    batch[key] = batch[key].cuda()
 
 def get_fscore(precision, recall):
     return 2 * (precision * recall) / (precision + recall)
+
+def output_file(filepath, output_data):
+    f = open(filepath, "w")
+    json.dump(output_data, f)
+    f.close()
 
 class TrainDataset(Dataset):
     def __init__(self, num_evidence_per_batch, 
@@ -295,46 +301,71 @@ class ValidateDataset(Dataset):
         return batch
 
 
-# class PredictDataset(Dataset):
-#     def __init__(self, tokenizer, filepath_prediction):
-#         # initalize variables
-#         self.tokenizer = tokenizer
+class TestDataset(Dataset):
+    def __init__(self, tokenizer, filepath_prediction):
+        # initalize variables
+        self.tokenizer = tokenizer
     
-#         # load data
-#         with open(filepath_prediction, 'r') as f:
-#             self.data_prediction = json.load(f)
+        # load data
+        with open(filepath_prediction, 'r') as f:
+            self.data_test = json.load(f)
 
-#         # get attributes from data
-#         self.prediction_ids = list(self.data_prediction.keys())
-#         self.num_prediction = len(self.prediction_ids)
+        # get attributes from data
+        self.test_ids = list(self.data_test.keys())
+        self.num_test = len(self.test_ids)
     
-#     def __len__(self):
-#         return self.num_prediction
+    def __len__(self):
+        return self.num_test
     
-#     def __getitem__(self, idx):
-#         # get the claim's data according to the index
-#         curr_prediction_ids = self.prediction_ids[idx]
-#         curr_prediction = self.data_prediction[curr_prediction_ids]
+    def __getitem__(self, idx):
+        # get the claim's data according to the index
+        curr_test_id = self.test_ids[idx]
+        curr_test = self.data_test[curr_test_id]
+        curr_test_text = curr_test["claim_text"]
 
-#         # preprocess the data
-#         curr_prediction = self.data_preprocess(curr_prediction)
+        # preprocess the data
+        processed_curr_test_text = self.data_preprocess(curr_test_text)
 
-#         # output the data
-#         return (curr_prediction_ids, curr_prediction)
+        # output the data
+        return (curr_test_id, curr_test_text, processed_curr_test_text)
     
-#     def data_preprocess(self, data):
-#         '''
-#         Preprocess the data
-#         '''
-#         data = data.lower()
-#         return data
+    def data_preprocess(self, data):
+        '''
+        Preprocess the data
+        '''
+        data = data.lower()
+        return data
     
-#     def collate_fn(self, evidences_tuples):
-#         """
-#         Process the inputed list of evidences' data, output one batch
+    def collate_fn(self, test_tupls):
+        """
+        Process the inputed list of evidences' data, output one batch
 
-#         :param evidences_tuples: list of tuples. [ (evidence_id, evidence_text), (evidence_id, evidence_text), ...]
-#         :return: one batch (dictinaory)
-#         """
-#         evidences_ids = []
-#         evidences_texts = []
+        :param evidences_tuples: list of tuples. [ (curr_test_id, curr_test_text), (curr_test_id, curr_test_text), ...]
+        :return: one batch (dictinaory)
+        """
+        test_claim_ids = []
+        test_claim_texts = []
+        test_claim_processed_texts = []
+
+        # load data from tuples
+        for curr_test_id, curr_test_text, processed_curr_test_text in test_tupls:
+            test_claim_ids.append(curr_test_id)
+            test_claim_texts.append(curr_test_text)
+            test_claim_processed_texts.append(processed_curr_test_text)
+
+        # tokenize the texts
+        tok_test_claim_processed_texts = self.tokenizer(
+            test_claim_processed_texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+        )
+
+        # generate one batch
+        batch = dict()
+        batch["claims_ids"] = test_claim_ids
+        batch["claim_texts"] = test_claim_texts
+        batch["claims_texts_input_ids"] = tok_test_claim_processed_texts.input_ids
+        batch["claims_texts_attention_mask"] = tok_test_claim_processed_texts.attention_mask
+
+        return batch

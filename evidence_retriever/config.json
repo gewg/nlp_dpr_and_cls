@@ -11,5 +11,6 @@
     "num_warmup_steps": 0,
     "save_model_dir": "evidence_retriever/cache/",
     "batch_size_evidences": 56,
-    "learning_rate": 2e-5
+    "learning_rate": 2e-5,
+    "batch_size_test": 128
 }

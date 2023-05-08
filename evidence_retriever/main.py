@@ -17,13 +17,72 @@ import utils
 import time
 import datetime
 import os
+import argparse
 from collections import defaultdict
 from transformers import AutoTokenizer, AutoModel
 from transformers import get_linear_schedule_with_warmup
 
-debug = False
+# debugging flag
+debug = True
 np_load_old = np.load
 np.load = lambda *a,**k: np_load_old(*a, allow_pickle=True, **k)
+
+def driver_predict():
+    """
+    Predict the evidences
+    """
+    # load parameters from configuration file
+    params = utils.get_config_from_json("evidence_retriever/config.json")
+
+    # set the tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(params.tokenizer)
+
+    # initialize the dataset
+    evidence_dataset = utils.EvidenceDataset(tokenizer, "data/evidence.json")
+    test_dataset = utils.TestDataset(tokenizer, "data/test-claims-unlabelled.json")
+
+    # initialize the dataloader
+    dataloader_evidence = DataLoader(evidence_dataset, batch_size=params.batch_size_evidences, shuffle=False, collate_fn=evidence_dataset.collate_fn)
+    dataloader_test = DataLoader(test_dataset, batch_size=params.batch_size_test, shuffle=False, collate_fn=test_dataset.collate_fn)
+
+    # create the encoder and load the set up
+    encoder_evidence = AutoModel.from_pretrained(params.tokenizer)
+    encoder_test = AutoModel.from_pretrained(params.tokenizer)
+    encoder_evidence.load_state_dict(torch.load("evidence_retriever/model_states/encoder_claim.bin"))
+    encoder_test.load_state_dict(torch.load("evidence_retriever/model_states/encoder_evidence.bin"))
+
+    encoder_test.cuda()
+    encoder_evidence.cuda()
+
+    # encode the evidence
+    if not debug:
+        evidence_ids, evidence_text_embeddings = encode_evidences(encoder_evidence, dataloader_evidence)
+        # evidence_embedding_dict = {"evidence_ids": evidence_ids, "evidence_text_embeddings": evidence_text_embeddings}
+        # np.save("data/evidence_embedding.npy", evidence_embedding_dict)  # save embeddings to file for debug
+    # if debug, directly get evidences' embeddings from file
+    else:
+        print("Debug - Loading evidence_embedding")
+        evidence_embedding_dict = np.load("data/evidence_embedding.npy").item()
+        evidence_ids = evidence_embedding_dict["evidence_ids"]
+        evidence_text_embeddings = evidence_embedding_dict["evidence_text_embeddings"]
+    
+    # prediction
+    print("Predict - Start predicting")
+    prediction = predict_model(encoder_test, dataloader_test, evidence_ids, evidence_text_embeddings, params.num_topk)
+    # store the prediction
+    print("Predict - Output the file")
+    output_claims = {}
+    for batch in dataloader_test:
+        for idx, claim_id in enumerate(batch["claims_ids"]):
+            curr_output_claim = {}
+            curr_output_claim["claim_text"] = batch["claim_texts"][idx]
+            curr_output_claim["evidences"] = prediction[claim_id]
+            output_claims[claim_id] = curr_output_claim
+    
+    utils.output_file("evidence_retriever/out/test-claims-predictions.json", output_claims)
+
+    print("Predict - Finish Prediction")
+
 
 def driver_train():
     """
@@ -50,7 +109,7 @@ def driver_train():
     # evidence_dataset = utils.EvidenceDataset(tokenizer, "data/evidence-debug.json")
     # validate_dataset = utils.ValidateDataset(tokenizer, "data/dev-claims.json")
 
-    # initialize the dataloaderß
+    # initialize the dataloader
     dataloader_train = DataLoader(train_dataset, batch_size=params.batch_size, shuffle=False, collate_fn=train_dataset.collate_fn)
     dataloader_evidence = DataLoader(evidence_dataset, batch_size=params.batch_size_evidences, shuffle=False, collate_fn=evidence_dataset.collate_fn)
     dataloader_validate = DataLoader(validate_dataset, batch_size=params.batch_size, shuffle=False, collate_fn=validate_dataset.collate_fn)
@@ -250,6 +309,7 @@ def validate_model(encoder_claim, encoder_evidence, dataloader_validate, dataloa
             predict_result = prediction[claim_id]
             real_result = batch["claims_evidences_ids"][idx]
             correct_prediction = len(set(predict_result) & set(real_result))
+            print(correct_prediction)
             # avoid denominator is 0
             if correct_prediction != 0:
                 precision = float(correct_prediction) / len(predict_result)
@@ -336,5 +396,15 @@ def predict_model(encoder_claim, dataloader_claims, evidence_ids, evidence_text_
     return prediction_result
 
 if __name__ == "__main__":
-    print("Starting...")
-    driver_train()
+
+    parser = argparse.ArgumentParser(description="parms")
+    parser.add_argument("--predict", action="store_true", help="predict the evidences")
+    parser.add_argument("--train", action="store_true", help="train the model")
+    args = parser.parse_args()
+
+    if args.predict:
+        print("Starting...")
+        driver_predict()
+    if args.train:
+        print("Starting...")
+        driver_train()
