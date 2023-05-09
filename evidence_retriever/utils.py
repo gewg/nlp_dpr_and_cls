@@ -42,7 +42,7 @@ def move_data_to_cuda(batch):
                    batch[key] = batch[key].cuda()
 
 def get_fscore(precision, recall):
-    return 2 * (precision * recall) / (precision + recall)
+    return (2 * precision * recall) / (precision + recall)
 
 def output_file(filepath, output_data):
     f = open(filepath, "w")

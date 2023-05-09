@@ -134,8 +134,8 @@ def driver_train():
 
     # create the learning rate scheduler
     total_steps = len(dataloader_train) * params.num_epoch
-    scheduler_claim = get_linear_schedule_with_warmup(optimizer=optimizer_claim, num_warmup_steps=params.num_warmup_steps, num_training_steps=total_steps)
-    scheduler_evidence = get_linear_schedule_with_warmup(optimizer=optimizer_evidence, num_warmup_steps=params.num_warmup_steps, num_training_steps=total_steps)
+    scheduler_claim = get_linear_schedule_with_warmup(optimizer=optimizer_claim, num_warmup_steps=params.num_warmup_steps_ratio * total_steps, num_training_steps=total_steps)
+    scheduler_evidence = get_linear_schedule_with_warmup(optimizer=optimizer_evidence, num_warmup_steps=params.num_warmup_steps_ratio * total_steps, num_training_steps=total_steps)
 
     '''Start training'''
     for epoch_i in range(0, params.num_epoch):
@@ -365,7 +365,6 @@ def encode_evidences(encoder_evidence, dataloader_evidence):
     del curr_evidence_text_embedding
 
     return [evidence_ids, evidence_text_embeddings]
-
 
 
 def predict_model(encoder_claim, dataloader_claims, evidence_ids, evidence_text_embeddings, topk):
