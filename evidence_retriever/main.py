@@ -23,9 +23,12 @@ from transformers import AutoTokenizer, AutoModel
 from transformers import get_linear_schedule_with_warmup
 
 # debugging flag
-debug = True
+debug = False
 np_load_old = np.load
 np.load = lambda *a,**k: np_load_old(*a, allow_pickle=True, **k)
+
+# true if training the previous model
+retrain = None
 
 def driver_predict():
     """
@@ -48,8 +51,8 @@ def driver_predict():
     # create the encoder and load the set up
     encoder_evidence = AutoModel.from_pretrained(params.tokenizer)
     encoder_test = AutoModel.from_pretrained(params.tokenizer)
-    encoder_evidence.load_state_dict(torch.load("evidence_retriever/model_states/encoder_claim.bin"))
-    encoder_test.load_state_dict(torch.load("evidence_retriever/model_states/encoder_evidence.bin"))
+    encoder_evidence.load_state_dict(torch.load("evidence_retriever/model_states/encoder_evidence.bin"))
+    encoder_test.load_state_dict(torch.load("evidence_retriever/model_states/encoder_claim.bin"))
 
     encoder_test.cuda()
     encoder_evidence.cuda()
@@ -76,6 +79,7 @@ def driver_predict():
         for idx, claim_id in enumerate(batch["claims_ids"]):
             curr_output_claim = {}
             curr_output_claim["claim_text"] = batch["claim_texts"][idx]
+            curr_output_claim["claim_label"] = "NOT_ENOUGH_INFO"
             curr_output_claim["evidences"] = prediction[claim_id]
             output_claims[claim_id] = curr_output_claim
     
@@ -117,6 +121,10 @@ def driver_train():
     # create the encoders, there are two encoders for 'question' and 'passage' according to dense passage retrieval
     encoder_claim = AutoModel.from_pretrained(params.tokenizer)
     encoder_evidence = AutoModel.from_pretrained(params.tokenizer)
+    # load the previous model
+    if retrain:
+        encoder_claim.load_state_dict(torch.load("evidence_retriever/model_states/encoder_claim.bin"))
+        encoder_evidence.load_state_dict(torch.load("evidence_retriever/model_states/encoder_evidence.bin"))
     encoder_claim.cuda()
     encoder_evidence.cuda()
 
@@ -309,7 +317,6 @@ def validate_model(encoder_claim, encoder_evidence, dataloader_validate, dataloa
             predict_result = prediction[claim_id]
             real_result = batch["claims_evidences_ids"][idx]
             correct_prediction = len(set(predict_result) & set(real_result))
-            print(correct_prediction)
             # avoid denominator is 0
             if correct_prediction != 0:
                 precision = float(correct_prediction) / len(predict_result)
@@ -399,7 +406,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="parms")
     parser.add_argument("--predict", action="store_true", help="predict the evidences")
-    parser.add_argument("--train", action="store_true", help="train the model")
+    parser.add_argument("--train", action="store_true", help="train a new model")
+    parser.add_argument("--retrain", action="store_true", help="train the previous model")
     args = parser.parse_args()
 
     if args.predict:
@@ -407,4 +415,9 @@ if __name__ == "__main__":
         driver_predict()
     if args.train:
         print("Starting...")
+        retrain = False
+        driver_train()
+    if args.retrain:
+        print("Starting...")
+        retrain = True
         driver_train()

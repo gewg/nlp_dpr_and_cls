@@ -135,12 +135,11 @@ class TrainDataset(Dataset):
         # according to evidences' ids, get evidences' texts
         for id in claims_evidences_ids:
             claims_evidences_texts.append(self.data_preprocess(self.data_evidences[id]))
-        '''FIXME maxlength'''
+
         # tokenize the texts
         tok_claims_texts = self.tokenizer(
             claims_texts,
             return_tensors="pt",
-            max_length=128,
             padding=True,
             truncation=True,
         )
@@ -148,7 +147,6 @@ class TrainDataset(Dataset):
         tok_claims_evidences_texts = self.tokenizer(
             claims_evidences_texts,
             return_tensors="pt",
-            max_length=128,
             padding=True,
             truncation=True,
         )

@@ -3,4 +3,3 @@ bunch
 torch
 torchvision
 torchaudio
-wandb
