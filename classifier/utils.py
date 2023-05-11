@@ -47,6 +47,96 @@ def output_file(filepath, output_data):
     json.dump(output_data, f)
     f.close()
 
+class TestDataset(Dataset):
+    def __init__(self,
+                 tokenizer,
+                 filepath_claims,
+                 filepath_evidences):
+    
+        # load data
+        with open(filepath_claims, 'r') as f:
+            self.data_claims = json.load(f)
+        with open(filepath_evidences, 'r') as f:
+            self.data_evidences = json.load(f)
+
+        # get attributes from data
+        self.claims_ids = list(self.data_claims.keys())
+        self.num_claims = len(self.claims_ids)
+        self.tokenizer = tokenizer
+    
+    def __len__(self):
+        '''
+        Get length of the dataset
+        '''
+        return self.num_claims
+    
+    def __getitem__(self, idx):
+        '''
+        Output the data for training
+        '''
+        # get the claim's data according to the index
+        curr_claim_idx = self.claims_ids[idx]
+        curr_claim = self.data_claims[curr_claim_idx]
+        curr_claim_text = curr_claim["claim_text"]
+        curr_claim_evidences_ids = curr_claim["evidences"]
+
+        # output the data
+        return (curr_claim_idx, curr_claim_text, curr_claim_evidences_ids)
+
+    def data_preprocess(self, data):
+        '''
+        Preprocess the data
+        '''
+        data = data.lower()
+        return data
+
+    def collate_fn(self, claims_tuples):
+        """
+        Process the inputed list of claims' data, output one batch
+
+        :param claims_tuples: list of tuples. [ (claim_text, claim_evidence), (claim_text, claim_evidence), ...]
+        :return: one batch (dictinaory)
+        """
+        claims_texts = []
+        claims_ids = []
+        claims_texts_content = []
+        claims_evidences_ids = []
+
+        # load data from tuples
+        for curr_claim_idx, curr_claim_text, curr_claim_evidences_ids in claims_tuples:
+
+            claims_ids.append(curr_claim_idx)
+            claims_texts_content.append(curr_claim_text)
+            claims_evidences_ids.append(curr_claim_evidences_ids)
+
+            # combine the evidence's text with claim text
+            curr_claim_evidence_text = ""
+            curr_claim_evidence_text += self.data_preprocess(curr_claim_text)
+            # add evidence's text, separate the evidences by separation token
+            for curr_evidence_id in curr_claim_evidences_ids:
+                curr_claim_evidence_text += self.tokenizer.sep_token
+                curr_claim_evidence_text += self.data_preprocess(self.data_evidences[curr_evidence_id])
+            claims_texts.append(curr_claim_evidence_text)
+        
+        # tokenize the texts
+        tok_claims_texts = self.tokenizer(
+            claims_texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True
+        )
+
+        # generate one batch
+        batch = dict()
+        batch["claims_texts_input_ids"] = tok_claims_texts.input_ids
+        batch["claims_texts_attention_mask"] = tok_claims_texts.attention_mask
+        batch["claims_ids"] = claims_ids
+        batch["claims_texts"] = claims_texts_content
+        batch["claims_evidences_ids"] = claims_evidences_ids
+
+        return batch
+
+
 class ClaimDataset(Dataset):
     def __init__(self,
                  tokenizer,

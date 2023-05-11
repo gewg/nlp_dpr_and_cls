@@ -1,6 +1,6 @@
 {
     "batch_size": 56,
-    "num_epoch": 3,
+    "num_epoch": 20,
     "num_itr_validate": 10,
     "seed": 46,
     "tokenizer": "roberta-base",

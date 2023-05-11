@@ -27,6 +27,46 @@ id_to_label = {0: "SUPPORTS", 1: "REFUTES", 2: "NOT_ENOUGH_INFO", 3: "DISPUTED"}
 
 retrain = None
 
+def driver_predict():
+    """
+    Predict the evidences
+    """
+    # load parameters from configuration file
+    params = utils.get_config_from_json("evidence_retriever/config.json")
+
+    # set the tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(params.tokenizer)
+
+    # initialize the dataset
+    test_dataset = utils.TestDataset(tokenizer, "result/test-claims-predictions.json", "data/evidence.json")
+
+    # initialize the dataloader
+    dataloader_test = DataLoader(test_dataset, batch_size=params.batch_size_test, shuffle=False, collate_fn=test_dataset.collate_fn)
+
+    # create the encoder and load the set up
+    pretrained_model = AutoModel.from_pretrained(params.tokenizer)
+    cls_model = models.ClaimClassifier(pretrained_model)
+    cls_model.load_state_dict(torch.load("classifier/model_states/cls_model.bin"))
+    cls_model.cuda()
+    
+    # prediction
+    print("Predict - Start predicting")
+    prediction = predict_model(cls_model, dataloader_test)
+    # store the prediction
+    print("Predict - Output the file")
+    output_claims = {}
+    for batch in dataloader_test:
+        for idx, claim_id in enumerate(batch["claims_ids"]):
+            curr_output_claim = {}
+            curr_output_claim["claim_text"] = batch["claims_texts"][idx]
+            curr_output_claim["claim_label"] = prediction[claim_id]
+            curr_output_claim["evidences"] = batch["claims_evidences_ids"][idx]
+            output_claims[claim_id] = curr_output_claim
+    
+    utils.output_file("result/test-claims-predictions.json", output_claims)
+
+    print("Predict - Finish Prediction")
+
 def driver_train():
     """
     Train the model to classify claims
@@ -235,7 +275,7 @@ if __name__ == "__main__":
 
     if args.predict:
         print("Starting...")
-        # driver_predict()
+        driver_predict()
     if args.train:
         print("Starting...")
         retrain = False

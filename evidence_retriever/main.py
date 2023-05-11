@@ -79,11 +79,10 @@ def driver_predict():
         for idx, claim_id in enumerate(batch["claims_ids"]):
             curr_output_claim = {}
             curr_output_claim["claim_text"] = batch["claim_texts"][idx]
-            curr_output_claim["claim_label"] = "NOT_ENOUGH_INFO"
             curr_output_claim["evidences"] = prediction[claim_id]
             output_claims[claim_id] = curr_output_claim
     
-    utils.output_file("evidence_retriever/out/test-claims-predictions.json", output_claims)
+    utils.output_file("result/test-claims-predictions.json", output_claims)
 
     print("Predict - Finish Prediction")
 
