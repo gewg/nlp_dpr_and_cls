@@ -3,3 +3,4 @@ bunch
 torch
 torchvision
 torchaudio
+nltk
