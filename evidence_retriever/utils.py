@@ -5,9 +5,11 @@ Utils and Dataset will be used
 @ Student Number: 1074198
 """
 import json
+import re
 import random
 import time
 import datetime
+from nltk.corpus import stopwords
 from bunch import Bunch
 from torch.utils.data import Dataset
 
@@ -96,6 +98,8 @@ class TrainDataset(Dataset):
         Preprocess the data
         '''
         data = data.lower()
+        data = re.sub("[^a-z]", "", data)
+        data = [word for word in data if word not in stopwords.words('english')]
         return data
 
     def collate_fn(self, claims_tuples):
@@ -194,6 +198,8 @@ class EvidenceDataset(Dataset):
         Preprocess the data
         '''
         data = data.lower()
+        data = re.sub("[^a-z]", "", data)
+        data = [word for word in data if word not in stopwords.words('english')]
         return data
     
     def collate_fn(self, evidences_tuples):
@@ -261,6 +267,8 @@ class ValidateDataset(Dataset):
         Preprocess the data
         '''
         data = data.lower()
+        data = re.sub("[^a-z]", "", data)
+        data = [word for word in data if word not in stopwords.words('english')]
         return data
     
     def collate_fn(self, validation_tuples):
@@ -332,6 +340,8 @@ class TestDataset(Dataset):
         Preprocess the data
         '''
         data = data.lower()
+        data = re.sub("[^a-z]", "", data)
+        data = [word for word in data if word not in stopwords.words('english')]
         return data
     
     def collate_fn(self, test_tupls):

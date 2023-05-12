@@ -8,6 +8,8 @@ import json
 import random
 import time
 import datetime
+import re
+from nltk.corpus import stopwords
 from bunch import Bunch
 from torch.utils.data import Dataset
 
@@ -88,6 +90,8 @@ class TestDataset(Dataset):
         Preprocess the data
         '''
         data = data.lower()
+        data = re.sub("[^a-z]", "", data)
+        data = [word for word in data if word not in stopwords.words('english')]
         return data
 
     def collate_fn(self, claims_tuples):
@@ -182,6 +186,8 @@ class ClaimDataset(Dataset):
         Preprocess the data
         '''
         data = data.lower()
+        data = re.sub("[^a-z]", "", data)
+        data = [word for word in data if word not in stopwords.words('english')]
         return data
 
     def collate_fn(self, claims_tuples):
